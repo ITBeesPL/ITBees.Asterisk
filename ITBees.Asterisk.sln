@@ -5,6 +5,8 @@ VisualStudioVersion = 17.12.35527.113 d17.12
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ITBees.Asterisk", "ITBees.Asterisk\ITBees.Asterisk.csproj", "{98B3782D-A8E5-4A8B-8886-7F024D0077ED}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ITBees.Asterisk.Tests", "ITBees.Asterisk.Tests\ITBees.Asterisk.Tests.csproj", "{13D9A519-B9EC-4F70-964C-D79BF3E5310C}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -15,6 +17,10 @@ Global
 		{98B3782D-A8E5-4A8B-8886-7F024D0077ED}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{98B3782D-A8E5-4A8B-8886-7F024D0077ED}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{98B3782D-A8E5-4A8B-8886-7F024D0077ED}.Release|Any CPU.Build.0 = Release|Any CPU
+		{13D9A519-B9EC-4F70-964C-D79BF3E5310C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{13D9A519-B9EC-4F70-964C-D79BF3E5310C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{13D9A519-B9EC-4F70-964C-D79BF3E5310C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{13D9A519-B9EC-4F70-964C-D79BF3E5310C}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
