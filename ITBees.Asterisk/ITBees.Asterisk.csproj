@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
     <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
     <PackageId>ITBees.Asterisk</PackageId>
-    <Version>8.0.1</Version>
+    <Version>8.0.2</Version>
     <Authors>ITBees</Authors>
     <Description>Control library for an Asterisk PBX running next to an application (Octopark parking columns and servers). Declarative configuration package (PJSIP extensions for Fanvil PA2S / X3SP, Yealink T30P and WebRTC browser phones, ring groups, intercom auto-answer, hotlines, SIP trunks, outbound routes) rendered to pjsip.conf / extensions.conf / manager.conf / rtp.conf / http.conf, idempotent apply with plan (dry run), package installation and service control on the host, AMI client (status, endpoints, contacts, channels, originate, hangup, reload, CLI commands) and phone setup sheets.</Description>
     <PackageTags>asterisk;pbx;sip;pjsip;ami;voip;fanvil;yealink;webrtc;itbees;octopark</PackageTags>
@@ -24,6 +24,10 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="ITBees.Asterisk.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Host\install-from-source.sh" LogicalName="ITBees.Asterisk.install-from-source.sh" />
   </ItemGroup>
 
   <ItemGroup>

@@ -397,14 +397,60 @@ public class HostTests
     }
 
     [Fact]
-    public async Task Missing_package_is_explained()
+    public async Task Missing_package_is_explained_when_building_is_switched_off()
     {
         var runner = new FakeRunner
         {
             Answer = c => c.Contains("install") ? new SystemCommandResult(100, "", "E: Unable to locate package asterisk") : new SystemCommandResult(0, "", ""),
         };
-        var error = await Assert.ThrowsAsync<AsteriskHostException>(() => new AsteriskHost(runner).InstallAsync());
+        var host = new AsteriskHost(runner, new AsteriskHostOptions { BuildFromSourceWhenNoPackage = false });
+        var error = await Assert.ThrowsAsync<AsteriskHostException>(() => host.InstallAsync());
         Assert.Contains("no 'asterisk' package", error.Message);
+    }
+
+    [Fact]
+    public async Task Missing_package_falls_back_to_a_build_from_the_sources()
+    {
+        var built = false;
+        var runner = new FakeRunner();
+        runner.Answer = c =>
+        {
+            // Debian 12 says it on stdout: "Package asterisk is not available ... E: Package 'asterisk' has no installation candidate".
+            if (c.Contains("apt-get install")) return new SystemCommandResult(100, "E: Package 'asterisk' has no installation candidate", "");
+            if (c.Contains("bash -s")) built = true;
+            if (c.EndsWith("-V")) return built ? new SystemCommandResult(0, "Asterisk 22.12.0\n", "") : new SystemCommandResult(-1, "", "", started: false);
+            return new SystemCommandResult(0, "", "");
+        };
+        var log = Path.Combine(Path.GetTempPath(), "itbees-asterisk-test-" + Guid.NewGuid().ToString("N") + ".log");
+        var host = new AsteriskHost(runner, new AsteriskHostOptions { InstallLogPath = log });
+
+        var result = await host.InstallAsync();
+
+        Assert.Contains("22.12.0", result);
+        Assert.Contains("official sources", result);
+        var build = runner.Commands.FindIndex(c => c.Contains("bash -s"));
+        Assert.Equal($"sudo -n bash -c bash -s > '{log}' 2>&1", runner.Commands[build]);
+        // The script itself travels on stdin, with Unix line ends.
+        Assert.StartsWith("#!/bin/bash\n", runner.Inputs[build]);
+        Assert.DoesNotContain("\r", runner.Inputs[build]);
+        Assert.Contains("make install", runner.Inputs[build]);
+    }
+
+    [Fact]
+    public async Task Install_progress_is_the_last_step_line_of_the_build_log()
+    {
+        var log = Path.Combine(Path.GetTempPath(), "itbees-asterisk-test-" + Guid.NewGuid().ToString("N") + ".log");
+        var host = new AsteriskHost(new FakeRunner(), new AsteriskHostOptions { InstallLogPath = log });
+        Assert.Null(await host.GetInstallProgressAsync());
+        try
+        {
+            await File.WriteAllTextAsync(log, "[itbees] 12:00:01 1/7 installing build tools\nReading package lists...\n[itbees] 12:01:44 5/7 compiling with 4 job(s) - the longest step\n   [CC] chan_pjsip.c\n");
+            Assert.Equal("5/7 compiling with 4 job(s) - the longest step (since 12:01:44)", await host.GetInstallProgressAsync());
+        }
+        finally
+        {
+            File.Delete(log);
+        }
     }
 }
 

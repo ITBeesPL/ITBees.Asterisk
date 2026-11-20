@@ -48,6 +48,8 @@ internal sealed class FakeHost : IAsteriskHost
         return Task.FromResult("done");
     }
 
+    public Task<string?> GetInstallProgressAsync(CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
+
     public Task<string?> ReadConfigAsync(string fileName, CancellationToken cancellationToken = default) =>
         Task.FromResult(Files.TryGetValue(fileName, out var content) ? content : null);
 

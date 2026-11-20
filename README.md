@@ -8,7 +8,7 @@ Biblioteka do sterowania centralką Asterisk działającą na tej samej maszynie
 - **Walidacja** (`package.Validate()`): błędy i ostrzeżenia. Odrzuca też każdą wartość, która mogłaby „wyjść” ze swojej linii w pliku konfiguracyjnym (nowa linia, `;`, nawiasy), bo wartości pochodzą z formularza.
 - **Generowanie plików**: `pjsip.conf`, `extensions.conf`, `manager.conf`, `rtp.conf`, `http.conf`.
 - **Plan i zastosowanie** (`PlanAsync` / `ApplyAsync`): zapisuje tylko pliki, które się różnią, wyłącza stary sterownik `chan_sip`, przeładowuje albo restartuje usługę i sprawdza przez AMI, czy Asterisk załadował wszystkie konta. Drugie zastosowanie tej samej paczki niczego nie zmienia.
-- **Host**: instalacja pakietu `asterisk` (apt), `systemctl start/stop/restart/enable`, polecenia `asterisk -rx`.
+- **Host**: instalacja Asteriska (pakiet `asterisk` z apt, a gdy system go nie ma — budowanie Asteriska 22 z oficjalnych źródeł, z postępem „krok n/7”), `systemctl start/stop/restart/enable`, polecenia `asterisk -rx`.
 - **AMI** (`AmiConnection`): stan centralki, zarejestrowane telefony (adres, model, czas odpowiedzi), trwające rozmowy, rejestracje trunków, zestawienie połączenia (`Originate`), rozłączenie, polecenia CLI.
 - **Karta konfiguracji telefonu** (`PhoneSetupSheet`): co wpisać w urządzeniu i gdzie, osobno dla Fanvil PA2S, Fanvil X3SP, Yealink SIP-T30P i telefonu w przeglądarce.
 
@@ -54,7 +54,8 @@ await asterisk.OriginateAsync(package.Manager, "100", "200");   // dzwoni 100, p
 
 ## Ograniczenia
 
-- Linux z systemd i apt. Debian 12 nie ma pakietu `asterisk` w repozytoriach: `InstallAsync` zgłasza to wprost i Asteriska trzeba wtedy zainstalować ręcznie.
+- Linux z systemd i apt. Debian 12 i Raspberry Pi OS bookworm nie mają pakietu `asterisk`: `InstallAsync` buduje wtedy Asteriska ze źródeł (`Host/install-from-source.sh`; na Raspberry Pi CM4 trwa to ok. 21 minut, wynik idzie do `/var/log/itbees-asterisk-install.log`). Budowanie wyłącza `AsteriskHostOptions.BuildFromSourceWhenNoPackage = false`.
+- Asterisk zbudowany ze źródeł działa jako root (nie ma konta `asterisk`), usługa to `/etc/systemd/system/asterisk.service`.
 - Klient AMI wykonuje jedną akcję naraz i nie nasłuchuje zdarzeń.
 - WebRTC używa certyfikatu generowanego przez Asteriska (`dtls_auto_generate_cert`) i nieszyfrowanego `ws://`, więc strona z telefonem musi być otwarta z `http://localhost` albo adresu w sieci lokalnej bez HTTPS.
 - Biblioteka nie generuje plików autoprovisioningu telefonów; karta konfiguracji podaje wartości do wpisania ręcznie.
@@ -62,3 +63,5 @@ await asterisk.OriginateAsync(package.Manager, "100", "200");   // dzwoni 100, p
 ## Testy
 
 `dotnet test` — renderowanie plików, walidacja, klient AMI na atrapie serwera TCP, provisioning na atrapie hosta. Testy nie potrzebują Asteriska.
+
+Sprawdzone ręcznie 2026-11-20 na Raspberry Pi CM4 (Debian 12, arm64) z Asteriskiem 22.12.0: budowanie ze źródeł, plan, zastosowanie (5 kont załadowanych, AMI, dialplan, transport WebSocket) i ponowne zastosowanie bez zmian. Rejestracja prawdziwych telefonów i rozmowy nie były sprawdzane.

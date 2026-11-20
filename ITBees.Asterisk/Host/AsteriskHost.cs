@@ -23,6 +23,17 @@ public sealed class AsteriskHostOptions
     public TimeSpan CommandTimeout { get; set; } = TimeSpan.FromSeconds(30);
 
     public TimeSpan InstallTimeout { get; set; } = TimeSpan.FromMinutes(15);
+
+    /// <summary>
+    /// Build Asterisk from the official sources when the system's repositories have no "asterisk" package
+    /// (Debian 12, Raspberry Pi OS bookworm). Takes 15-60 minutes on a small board.
+    /// </summary>
+    public bool BuildFromSourceWhenNoPackage { get; set; } = true;
+
+    public TimeSpan SourceBuildTimeout { get; set; } = TimeSpan.FromHours(2);
+
+    /// <summary>Output of the source build; its "[itbees]" lines are the progress.</summary>
+    public string InstallLogPath { get; set; } = "/var/log/itbees-asterisk-install.log";
 }
 
 /// <summary>What is on the host right now.</summary>
@@ -49,8 +60,14 @@ public interface IAsteriskHost
 
     Task<AsteriskInstallation> GetInstallationAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>Installs the distribution's asterisk package. Returns the tail of the package manager output.</summary>
+    /// <summary>
+    /// Installs the distribution's asterisk package or, where there is none, builds Asterisk from the official
+    /// sources. Returns a short description of what was installed.
+    /// </summary>
     Task<string> InstallAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Latest step of a running (or the last) source build, e.g. "5/7 compiling with 4 job(s)"; null when there is none.</summary>
+    Task<string?> GetInstallProgressAsync(CancellationToken cancellationToken = default);
 
     /// <summary>Content of a file in the configuration directory, or null when it does not exist.</summary>
     Task<string?> ReadConfigAsync(string fileName, CancellationToken cancellationToken = default);
@@ -109,19 +126,94 @@ public sealed partial class AsteriskHost : IAsteriskHost
             null, Options.InstallTimeout, cancellationToken);
         if (install.Success == false)
         {
-            var text = install.Describe();
-            if (text.Contains("Unable to locate package", StringComparison.OrdinalIgnoreCase) ||
-                text.Contains("no installation candidate", StringComparison.OrdinalIgnoreCase))
+            // apt prints the reason on stdout or stderr depending on its version.
+            var text = (install.Output + "\n" + install.Error).Trim();
+            var noPackage = text.Contains("Unable to locate package", StringComparison.OrdinalIgnoreCase) ||
+                            text.Contains("no installation candidate", StringComparison.OrdinalIgnoreCase);
+            if (noPackage && Options.BuildFromSourceWhenNoPackage)
+                return await InstallFromSourceAsync(cancellationToken);
+            if (noPackage)
             {
                 throw new AsteriskHostException(
-                    "This system's package repositories have no 'asterisk' package (e.g. Debian 12 dropped it) - install Asterisk by hand, then apply the configuration. " + text);
+                    "This system's package repositories have no 'asterisk' package (e.g. Debian 12 dropped it) - install Asterisk by hand, then apply the configuration.");
             }
 
-            throw new AsteriskHostException("Installing the asterisk package failed: " + text);
+            throw new AsteriskHostException("Installing the asterisk package failed: " + install.Describe());
         }
 
-        var lines = install.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        return string.Join('\n', lines.TakeLast(5));
+        var installed = await GetInstallationAsync(cancellationToken);
+        return $"Asterisk {installed.Version} installed from the system package.";
+    }
+
+    /// <summary>The build script shipped with the library (Host/install-from-source.sh).</summary>
+    internal static string ReadSourceInstallScript()
+    {
+        using var stream = typeof(AsteriskHost).Assembly.GetManifestResourceStream("ITBees.Asterisk.install-from-source.sh")
+                           ?? throw new AsteriskHostException("The Asterisk build script is missing from the library.");
+        using var reader = new StreamReader(stream);
+        // A Windows checkout may have given the file CRLF line ends, which bash does not take.
+        return reader.ReadToEnd().Replace("\r\n", "\n");
+    }
+
+    private async Task<string> InstallFromSourceAsync(CancellationToken cancellationToken)
+    {
+        // The script arrives on stdin and its whole output goes to the log, where the progress is read from.
+        var build = await Privileged(new[] { "bash", "-c", $"bash -s > '{Options.InstallLogPath}' 2>&1" },
+            ReadSourceInstallScript(), Options.SourceBuildTimeout, cancellationToken);
+        if (build.Success == false)
+        {
+            var progress = await GetInstallProgressAsync(cancellationToken);
+            var tail = await ReadLogTailAsync(4, cancellationToken);
+            throw new AsteriskHostException(
+                $"Building Asterisk from the sources failed{(progress == null ? string.Empty : $" at step {progress}")}: " +
+                $"{(tail.Length > 0 ? tail : build.Describe())} (full output: {Options.InstallLogPath})");
+        }
+
+        var installed = await GetInstallationAsync(cancellationToken);
+        if (installed.Installed == false)
+            throw new AsteriskHostException($"The build finished but the asterisk program is missing (see {Options.InstallLogPath}).");
+        return $"Asterisk {installed.Version} built and installed from the official sources.";
+    }
+
+    public async Task<string?> GetInstallProgressAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            if (File.Exists(Options.InstallLogPath) == false)
+                return null;
+            // Shared read: the build is still writing to the file.
+            await using var stream = new FileStream(Options.InstallLogPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            using var reader = new StreamReader(stream);
+            string? last = null;
+            while (await reader.ReadLineAsync(cancellationToken) is { } line)
+            {
+                if (line.StartsWith("[itbees] ", StringComparison.Ordinal))
+                    last = line;
+            }
+
+            // "[itbees] 12:01:44 5/7 compiling..." -> "5/7 compiling... (since 12:01:44)"
+            if (last == null)
+                return null;
+            var parts = last.Split(' ', 3);
+            return parts.Length == 3 ? $"{parts[2]} (since {parts[1]})" : last;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    private async Task<string> ReadLogTailAsync(int lines, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var all = await File.ReadAllLinesAsync(Options.InstallLogPath, cancellationToken);
+            return string.Join(" | ", all.Where(x => string.IsNullOrWhiteSpace(x) == false).TakeLast(lines).Select(x => x.Trim()));
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return string.Empty;
+        }
     }
 
     public async Task<string?> ReadConfigAsync(string fileName, CancellationToken cancellationToken = default)

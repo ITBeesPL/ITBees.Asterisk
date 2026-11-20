@@ -14,8 +14,14 @@ public interface IAsteriskService
     /// <summary>Is Asterisk installed on this host, which version, is the service running.</summary>
     Task<AsteriskInstallation> GetInstallationAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>Installs the distribution's asterisk package (apt). Returns the tail of the installer output.</summary>
+    /// <summary>
+    /// Installs Asterisk: the distribution's package (apt) or, where there is none, a build from the official
+    /// sources (15-60 minutes). Returns what was installed.
+    /// </summary>
     Task<string> InstallAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Latest step of a running (or the last) source build; null when there was none.</summary>
+    Task<string?> GetInstallProgressAsync(CancellationToken cancellationToken = default);
 
     /// <summary>What applying the package would change; writes nothing.</summary>
     Task<AsteriskProvisioningResult> PlanAsync(AsteriskConfigurationPackage package, CancellationToken cancellationToken = default);
@@ -71,6 +77,8 @@ public sealed class AsteriskService : IAsteriskService
         _host.GetInstallationAsync(cancellationToken);
 
     public Task<string> InstallAsync(CancellationToken cancellationToken = default) => _host.InstallAsync(cancellationToken);
+
+    public Task<string?> GetInstallProgressAsync(CancellationToken cancellationToken = default) => _host.GetInstallProgressAsync(cancellationToken);
 
     public Task<AsteriskProvisioningResult> PlanAsync(AsteriskConfigurationPackage package, CancellationToken cancellationToken = default) =>
         ApplyAsync(package, new AsteriskProvisioningOptions { DryRun = true }, cancellationToken);
