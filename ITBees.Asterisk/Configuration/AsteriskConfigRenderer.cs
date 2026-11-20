@@ -22,6 +22,10 @@ public static class AsteriskConfigRenderer
     public const string UdpTransport = "transport-udp";
     public const string TcpTransport = "transport-tcp";
     public const string WsTransport = "transport-ws";
+    public const string WssTransport = "transport-wss";
+
+    /// <summary>Private key and self-signed certificate of the HTTPS server, in one file (made by the host).</summary>
+    public const string TlsCertificateFile = "keys/itbees-pbx.pem";
 
     /// <summary>File name → content, in the order the files are written.</summary>
     public static IReadOnlyDictionary<string, string> Render(AsteriskConfigurationPackage package)
@@ -94,6 +98,14 @@ public static class AsteriskConfigRenderer
         {
             sb.Append("bindaddr=").Append(package.WebRtc.BindAddress).Append('\n');
             sb.Append("bindport=").Append(package.WebRtc.HttpPort).Append('\n');
+            if (package.WebRtc.TlsEnabled)
+            {
+                // wss:// for phones inside an https page (a browser refuses ws:// there).
+                sb.Append("tlsenable=yes\n");
+                sb.Append("tlsbindaddr=").Append(FormatBind(package.WebRtc.BindAddress)).Append(':').Append(package.WebRtc.TlsPort).Append('\n');
+                sb.Append("tlscertfile=/etc/asterisk/").Append(TlsCertificateFile).Append('\n');
+                sb.Append("tlsprivatekey=/etc/asterisk/").Append(TlsCertificateFile).Append('\n');
+            }
         }
 
         return sb.ToString();
@@ -139,6 +151,8 @@ public static class AsteriskConfigRenderer
         {
             // The WebSocket itself is served by http.conf; this transport only makes PJSIP accept it.
             AppendTransport(sb, WsTransport, "ws", FormatBind(package.WebRtc.BindAddress), sip);
+            if (package.WebRtc.TlsEnabled)
+                AppendTransport(sb, WssTransport, "wss", FormatBind(package.WebRtc.BindAddress), sip);
         }
 
         foreach (var extension in package.Extensions.Where(x => x.Enabled))

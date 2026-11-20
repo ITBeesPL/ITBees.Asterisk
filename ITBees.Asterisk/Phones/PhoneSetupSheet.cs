@@ -95,10 +95,14 @@ public sealed class PhoneSetupSheet
             case AsteriskDeviceModel.WebRtcBrowser:
                 sheet.MenuPath = null;
                 sheet.Fields.Add(new("WebSocket server", $"ws://{pbxAddress}:{package.WebRtc.HttpPort}/ws"));
+                if (package.WebRtc.TlsEnabled)
+                    sheet.Fields.Add(new("WebSocket server (https pages)", $"wss://{pbxAddress}:{package.WebRtc.TlsPort}/ws"));
                 sheet.Fields.Add(new("SIP URI", $"sip:{extension.Number}@{pbxAddress}"));
                 sheet.Fields.Add(new("User name", extension.Number));
                 sheet.Fields.Add(new("Password", extension.Password));
                 sheet.Hints.Add("A browser gives a page the microphone only on https:// or http://localhost.");
+                if (package.WebRtc.TlsEnabled)
+                    sheet.Hints.Add($"The wss:// certificate is self-signed: open https://{pbxAddress}:{package.WebRtc.TlsPort}/ws in the browser once and accept it.");
                 break;
 
             default:

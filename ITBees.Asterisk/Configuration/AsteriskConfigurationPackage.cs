@@ -87,6 +87,15 @@ public sealed class WebRtcSettings
 
     /// <summary>Port of the Asterisk HTTP server; the phone connects to ws://host:port/ws.</summary>
     public int HttpPort { get; set; } = 8088;
+
+    /// <summary>
+    /// Also serve the WebSocket over TLS (wss://host:TlsPort/ws). A page opened over https:// may only use wss://,
+    /// so a phone inside an https web application needs it. The certificate is self-signed and made on the host;
+    /// each browser has to accept it once (open https://host:TlsPort/ws and confirm).
+    /// </summary>
+    public bool TlsEnabled { get; set; } = true;
+
+    public int TlsPort { get; set; } = 8089;
 }
 
 /// <summary>Asterisk Manager Interface account the library itself uses for status and call control.</summary>

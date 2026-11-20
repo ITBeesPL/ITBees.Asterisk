@@ -61,6 +61,8 @@ public static partial class AsteriskConfigurationValidator
                 errors.Add("WebRTC HTTP port must be between 1024 and 65535.");
             if (IPAddress.TryParse(package.WebRtc.BindAddress, out _) == false)
                 errors.Add("WebRTC bind address must be an IP address.");
+            if (package.WebRtc.TlsEnabled && (IsPort(package.WebRtc.TlsPort) == false || package.WebRtc.TlsPort == package.WebRtc.HttpPort))
+                errors.Add("WebRTC TLS port must be between 1024 and 65535 and differ from the HTTP port.");
         }
 
         if (IPAddress.TryParse(package.Manager.BindAddress, out var managerBind) == false)

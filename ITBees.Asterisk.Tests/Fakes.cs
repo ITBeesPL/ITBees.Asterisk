@@ -50,6 +50,21 @@ internal sealed class FakeHost : IAsteriskHost
 
     public Task<string?> GetInstallProgressAsync(CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
 
+    public bool HasCertificate { get; set; }
+
+    public Task<bool> EnsureTlsCertificateAsync(bool checkOnly = false, CancellationToken cancellationToken = default)
+    {
+        if (HasCertificate)
+            return Task.FromResult(false);
+        if (checkOnly == false)
+        {
+            Calls.Add("certificate");
+            HasCertificate = true;
+        }
+
+        return Task.FromResult(true);
+    }
+
     public Task<string?> ReadConfigAsync(string fileName, CancellationToken cancellationToken = default) =>
         Task.FromResult(Files.TryGetValue(fileName, out var content) ? content : null);
 

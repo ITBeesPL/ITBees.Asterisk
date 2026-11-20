@@ -75,6 +75,12 @@ public interface IAsteriskHost
     /// <summary>Writes a file in the configuration directory; a file not written by the library before is kept as "*.itbees-orig".</summary>
     Task WriteConfigAsync(string fileName, string content, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Makes the self-signed certificate of the HTTPS server (wss://) when there is none yet. Returns true when it
+    /// was missing; with <paramref name="checkOnly"/> nothing is created.
+    /// </summary>
+    Task<bool> EnsureTlsCertificateAsync(bool checkOnly = false, CancellationToken cancellationToken = default);
+
     /// <summary>systemctl start / stop / restart / enable.</summary>
     Task ServiceAsync(string action, CancellationToken cancellationToken = default);
 
@@ -256,6 +262,29 @@ public sealed partial class AsteriskHost : IAsteriskHost
         // The files hold passwords: owner and group only. A missing "asterisk" account is not fatal here.
         await Privileged(new[] { "chown", $"{Options.FileOwner}:{Options.FileOwner}", path }, null, Options.CommandTimeout, cancellationToken);
         await Privileged(new[] { "chmod", "640", path }, null, Options.CommandTimeout, cancellationToken);
+    }
+
+    public async Task<bool> EnsureTlsCertificateAsync(bool checkOnly = false, CancellationToken cancellationToken = default)
+    {
+        var path = Options.ConfigDirectory.TrimEnd('/') + "/" + AsteriskConfigRenderer.TlsCertificateFile;
+        var exists = await Privileged(new[] { "test", "-s", path }, null, Options.CommandTimeout, cancellationToken);
+        if (exists.Success)
+            return false;
+        if (checkOnly)
+            return true;
+
+        // Key and certificate in one file readable by root only; ten years, because nobody renews a certificate
+        // of a PBX in a parking column. Browsers accept it by hand once, so the name in it does not matter.
+        var directory = path[..path.LastIndexOf('/')];
+        var script =
+            "set -e; umask 077; mkdir -p '" + directory + "'; " +
+            "openssl req -x509 -nodes -newkey rsa:2048 -days 3650 -subj '/CN=Octopark PBX' " +
+            "-keyout '" + path + ".key' -out '" + path + ".crt' 2>/dev/null; " +
+            "cat '" + path + ".key' '" + path + ".crt' > '" + path + "'; rm -f '" + path + ".key' '" + path + ".crt'";
+        var made = await Privileged(new[] { "bash", "-c", script }, null, TimeSpan.FromSeconds(60), cancellationToken);
+        if (made.Success == false)
+            throw new AsteriskHostException($"Cannot create the certificate {path} (is openssl installed?): {made.Describe()}");
+        return true;
     }
 
     public async Task ServiceAsync(string action, CancellationToken cancellationToken = default)

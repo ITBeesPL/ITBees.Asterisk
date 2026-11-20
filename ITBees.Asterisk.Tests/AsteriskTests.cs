@@ -161,6 +161,14 @@ public class RendererTests
 
         Assert.Contains("enabled=yes\nbindaddr=0.0.0.0\nbindport=8088\n", files[AsteriskConfigRenderer.HttpFile]);
         Assert.Contains("[transport-ws]\ntype=transport\nprotocol=ws\nbind=0.0.0.0\n", files[AsteriskConfigRenderer.PjsipFile]);
+        // TLS is on by default: an https page (the operator panel) can only use wss://.
+        Assert.Contains("tlsenable=yes\ntlsbindaddr=0.0.0.0:8089\ntlscertfile=/etc/asterisk/keys/itbees-pbx.pem\ntlsprivatekey=/etc/asterisk/keys/itbees-pbx.pem\n", files[AsteriskConfigRenderer.HttpFile]);
+        Assert.Contains("[transport-wss]\ntype=transport\nprotocol=wss\nbind=0.0.0.0\n", files[AsteriskConfigRenderer.PjsipFile]);
+
+        package.WebRtc.TlsEnabled = false;
+        files = AsteriskConfigRenderer.Render(package);
+        Assert.DoesNotContain("tlsenable", files[AsteriskConfigRenderer.HttpFile]);
+        Assert.DoesNotContain("transport-wss", files[AsteriskConfigRenderer.PjsipFile]);
         Assert.Contains("webrtc=yes\ndtls_auto_generate_cert=yes\n", files[AsteriskConfigRenderer.PjsipFile]);
     }
 
@@ -292,6 +300,27 @@ public class ProvisionerTests
         var result = await Provisioner(host, "100", "101", "200").ApplyAsync(package);
 
         Assert.True(result.Restarted);
+    }
+
+    [Fact]
+    public async Task WebRtc_gets_its_certificate_once_and_a_plan_only_announces_it()
+    {
+        var host = new FakeHost();
+        var package = TestData.Package();
+        package.WebRtc.Enabled = true;
+
+        var plan = await Provisioner(host).ApplyAsync(package, new AsteriskProvisioningOptions { DryRun = true });
+        Assert.Contains(plan.Changes, c => c.Contains("certificate"));
+        Assert.False(host.HasCertificate);
+
+        var first = await Provisioner(host, "100", "101", "200").ApplyAsync(package);
+        Assert.True(first.Success, first.Summary);
+        Assert.Contains("certificate", host.Calls);
+
+        host.Calls.Clear();
+        var second = await Provisioner(host, "100", "101", "200").ApplyAsync(package);
+        Assert.Empty(second.Changes);
+        Assert.Empty(host.Calls);
     }
 
     [Fact]

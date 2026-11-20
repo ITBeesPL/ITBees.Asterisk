@@ -194,8 +194,17 @@ public sealed partial class AsteriskProvisioner
             }
         }
 
-        Step(result, "Files", changedFiles.Count > 0 ? AsteriskStepStatus.Changed : AsteriskStepStatus.Ok,
-            changedFiles.Count > 0 ? string.Join(", ", changedFiles) : "no differences");
+        // The HTTPS server refuses to start its TLS listener without the certificate file.
+        var certificateMade = false;
+        if (package.WebRtc.Enabled && package.WebRtc.TlsEnabled && installation.Installed)
+        {
+            certificateMade = await _host.EnsureTlsCertificateAsync(options.DryRun, cancellationToken);
+            if (certificateMade)
+                result.Changes.Add("create the self-signed certificate for wss://");
+        }
+
+        Step(result, "Files", changedFiles.Count > 0 || certificateMade ? AsteriskStepStatus.Changed : AsteriskStepStatus.Ok,
+            changedFiles.Count > 0 ? string.Join(", ", changedFiles) : certificateMade ? "certificate" : "no differences");
 
         if (options.DryRun)
         {
@@ -205,7 +214,7 @@ public sealed partial class AsteriskProvisioner
         }
 
         // Transports, RTP ports, the HTTP server, the manager and the module list are only read at start.
-        var needsRestart = installation.ServiceActive == false || transportChanged || modulesChanged ||
+        var needsRestart = installation.ServiceActive == false || transportChanged || modulesChanged || certificateMade ||
                            changedFiles.Any(x => x is AsteriskConfigRenderer.RtpFile or AsteriskConfigRenderer.HttpFile or AsteriskConfigRenderer.ManagerFile);
         if (needsRestart)
         {
