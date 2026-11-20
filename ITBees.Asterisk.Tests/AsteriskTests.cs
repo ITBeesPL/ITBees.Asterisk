@@ -491,6 +491,41 @@ public class ServiceTests
     }
 
     [Fact]
+    public async Task Status_reads_contacts_as_a_live_asterisk_22_sends_them()
+    {
+        // Field names and values copied from a 22.12.0 with a Fanvil PA2 and a browser phone registered.
+        var ami = new FakeAmi((action, _) => action switch
+        {
+            "PJSIPShowEndpoints" => FakeAmi.Ok(
+                FakeAmi.Message(("Event", "EndpointList"), ("ObjectName", "100"), ("Aor", "100"), ("DeviceState", "Unavailable"), ("ActiveChannels", "0")),
+                FakeAmi.Message(("Event", "EndpointList"), ("ObjectName", "101"), ("Aor", "101"), ("DeviceState", "Not in use"), ("ActiveChannels", "0"))),
+            "PJSIPShowContacts" => FakeAmi.Ok(
+                FakeAmi.Message(("Event", "ContactList"), ("ObjectType", "contact"), ("ObjectName", "100;@f57aa50d26267206498ac6994e38cb94"),
+                    ("ViaAddr", "192.168.1.5"), ("Endpoint", "100"), ("ViaPort", "5060"), ("Uri", "sip:100@192.168.1.5:5060"),
+                    ("UserAgent", "Fanvil PA2 2.8.2.7010 0c383e29ab17"), ("Status", "NonQualified"), ("RoundtripUsec", "N/A")),
+                FakeAmi.Message(("Event", "ContactList"), ("ObjectType", "contact"), ("ObjectName", "101;@1fb147fee78f711841b3bbe5beb6f069"),
+                    ("ViaAddr", "8oepein968g6.invalid"), ("Endpoint", "101"), ("ViaPort", "0"),
+                    ("Uri", "sip:9drre02o@127.0.0.1:53686;transport=WS;x-ast-orig-host=8oepein968g6.invalid:0"),
+                    ("UserAgent", "Octopark screen intercom"), ("Status", "Reachable"), ("RoundtripUsec", "8206"))),
+            "CoreSettings" or "CoreStatus" => new AmiResponse(FakeAmi.Message(("Response", "Success")), Array.Empty<AmiMessage>()),
+            _ => FakeAmi.Ok(),
+        });
+        var service = new AsteriskService(new FakeHost()) { AmiFactory = (_, _) => Task.FromResult<IAmiConnection>(ami) };
+
+        var status = await service.GetStatusAsync(TestData.Package().Manager);
+
+        var fanvil = status.Endpoints.Single(x => x.Name == "100");
+        Assert.True(fanvil.Registered);
+        Assert.Equal("192.168.1.5", fanvil.Contacts.Single().Address);
+        Assert.Equal("Fanvil PA2 2.8.2.7010 0c383e29ab17", fanvil.Contacts.Single().UserAgent);
+        Assert.Null(fanvil.Contacts.Single().RoundtripMs);
+        var browser = status.Endpoints.Single(x => x.Name == "101");
+        Assert.True(browser.Registered);
+        Assert.Equal("127.0.0.1", browser.Contacts.Single().Address);
+        Assert.Equal(8.2, browser.Contacts.Single().RoundtripMs);
+    }
+
+    [Fact]
     public async Task Originate_rings_the_first_phone_and_dials_from_the_internal_context()
     {
         var ami = new FakeAmi((_, _) => FakeAmi.Ok());

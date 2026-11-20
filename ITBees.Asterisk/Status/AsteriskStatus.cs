@@ -117,13 +117,19 @@ public static class AsteriskStatusReader
         var contacts = await TryList(ami, "PJSIPShowContacts", cancellationToken);
         foreach (var c in contacts.Where(x => x.Event == "ContactList"))
         {
-            // "Aor" for a registered phone; for older versions the object name is "<aor>/<uri>".
-            var owner = c["EndpointName"];
+            // Asterisk 22 names the owner "Endpoint" and the contact "<aor>;@<hash>" (seen on a live 22.12);
+            // older versions used "EndpointName" / "Aor" and "<aor>/<uri>".
+            var aor = c["Aor"];
+            if (string.IsNullOrEmpty(aor))
+                aor = c["ObjectName"]?.Split(';', '/')[0];
+            var owner = c["Endpoint"];
             if (string.IsNullOrEmpty(owner))
-                owner = c["Aor"] ?? c["ObjectName"]?.Split('/')[0];
+                owner = c["EndpointName"];
+            if (string.IsNullOrEmpty(owner))
+                owner = aor;
             var endpoint = status.Endpoints.FirstOrDefault(x => x.Name == owner) ??
-                           status.Endpoints.FirstOrDefault(x => x.Name == c["Aor"]) ??
-                           status.Endpoints.FirstOrDefault(x => x.Name + "-aor" == c["Aor"]);
+                           status.Endpoints.FirstOrDefault(x => x.Name == aor) ??
+                           status.Endpoints.FirstOrDefault(x => x.Name + "-aor" == aor);
             if (endpoint == null)
                 continue;
 
@@ -132,7 +138,7 @@ public static class AsteriskStatusReader
             endpoint.Contacts.Add(new AsteriskContactStatus
             {
                 Uri = c["Uri"],
-                Address = HostOf(c["ViaAddress"]) ?? HostOfUri(c["Uri"]),
+                Address = ContactAddress(c),
                 UserAgent = string.IsNullOrEmpty(c["UserAgent"]) ? null : c["UserAgent"],
                 Status = contactStatus,
                 Reachable = contactStatus switch
@@ -200,6 +206,20 @@ public static class AsteriskStatusReader
     /// <summary>"00:01:25" → 85.</summary>
     private static int ParseDuration(string? value) =>
         TimeSpan.TryParse(value, CultureInfo.InvariantCulture, out var parsed) ? (int)parsed.TotalSeconds : 0;
+
+    /// <summary>
+    /// Where the device registered from: "ViaAddr" (Asterisk 22) or "ViaAddress" (older). A browser phone puts a
+    /// made-up "xxxx.invalid" name there, so for it the address comes from the contact URI.
+    /// </summary>
+    private static string? ContactAddress(AmiMessage contact)
+    {
+        var via = contact["ViaAddr"];
+        if (string.IsNullOrEmpty(via))
+            via = HostOf(contact["ViaAddress"]);
+        if (string.IsNullOrEmpty(via) || via.EndsWith(".invalid", StringComparison.OrdinalIgnoreCase))
+            return HostOfUri(contact["Uri"]);
+        return via;
+    }
 
     private static string? HostOf(string? address)
     {
